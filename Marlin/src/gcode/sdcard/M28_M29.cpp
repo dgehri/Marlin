@@ -54,11 +54,11 @@ void GcodeSuite::M28() {
       #endif
     }
     else
-      card.openFileWrite(p);
+      card.openFile(p, false);
 
   #else
 
-    card.openFileWrite(parser.string_arg);
+    card.openFile(parser.string_arg, false);
 
   #endif
 }

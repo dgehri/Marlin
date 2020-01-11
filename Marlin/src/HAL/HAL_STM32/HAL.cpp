@@ -28,7 +28,13 @@
 #include "../../inc/MarlinConfig.h"
 #include "../shared/Delay.h"
 
-#if TMC_HAS_SW_SERIAL
+#if (__cplusplus == 201703L) && defined(__has_include)
+  #define HAS_SWSERIAL __has_include(<SoftwareSerial.h>)
+#else
+  #define HAS_SWSERIAL HAS_TMC220x
+#endif
+
+#if HAS_SWSERIAL
   #include "SoftwareSerial.h"
 #endif
 
@@ -87,7 +93,7 @@ void HAL_init() {
   while (!LL_PWR_IsActiveFlag_BRR());
   #endif // EEPROM_EMULATED_SRAM
 
-  #if TMC_HAS_SW_SERIAL
+  #if HAS_SWSERIAL
     SoftwareSerial::setInterruptPriority(SWSERIAL_TIMER_IRQ_PRIO, 0);
   #endif
 }

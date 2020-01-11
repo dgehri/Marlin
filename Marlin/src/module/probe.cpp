@@ -38,7 +38,7 @@
 #include "../gcode/gcode.h"
 #include "../lcd/ultralcd.h"
 
-#include "../MarlinCore.h" // for stop(), disable_e_steppers, wait_for_user
+#include "../Marlin.h" // for stop(), disable_e_steppers, wait_for_user
 
 #if HAS_LEVELING
   #include "../feature/bedlevel/bedlevel.h"
@@ -55,6 +55,8 @@
 #if ENABLED(MEASURE_BACKLASH_WHEN_PROBING)
   #include "../feature/backlash.h"
 #endif
+
+xyz_pos_t probe_offset; // Initialized by settings.load()
 
 #if ENABLED(BLTOUCH)
   #include "../feature/bltouch.h"
@@ -84,14 +86,6 @@
 #define DEBUG_OUT ENABLED(DEBUG_LEVELING_FEATURE)
 #include "../core/debug_out.h"
 
-
-xyz_pos_t probe_offset; // Initialized by settings.load()
-
-#if HAS_PROBE_XY_OFFSET
-  xyz_pos_t &probe_offset_xy = probe_offset;
-#endif
-
-
 #if ENABLED(Z_PROBE_SLED)
 
   #ifndef SLED_DOCKING_OFFSET
@@ -119,9 +113,7 @@ xyz_pos_t probe_offset; // Initialized by settings.load()
 
   // Move to the magnet to unlock the probe
   void run_deploy_moves_script() {
-    #ifndef TOUCH_MI_DEPLOY_XPOS
-      #define TOUCH_MI_DEPLOY_XPOS X_MIN_POS
-    #elif TOUCH_MI_DEPLOY_XPOS > X_MAX_BED
+    #if TOUCH_MI_DEPLOY_XPOS > X_MAX_BED
       TemporaryGlobalEndstopsState unlock_x(false);
     #endif
     #if TOUCH_MI_DEPLOY_YPOS > Y_MAX_BED
@@ -137,7 +129,7 @@ xyz_pos_t probe_offset; // Initialized by settings.load()
       KEEPALIVE_STATE(PAUSED_FOR_USER);
       wait_for_user = true; // LCD click or M108 will clear this
       #if ENABLED(HOST_PROMPT_SUPPORT)
-        host_prompt_do(PROMPT_USER_CONTINUE, PSTR("Deploy TouchMI probe."), CONTINUE_STR);
+        host_prompt_do(PROMPT_USER_CONTINUE, PSTR("Deploy TouchMI probe."), PSTR("Continue"));
       #endif
       while (wait_for_user) idle();
       ui.reset_status();
@@ -298,7 +290,7 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
       KEEPALIVE_STATE(PAUSED_FOR_USER);
       wait_for_user = true;
       #if ENABLED(HOST_PROMPT_SUPPORT)
-        host_prompt_do(PROMPT_USER_CONTINUE, PSTR("Stow Probe"), CONTINUE_STR);
+        host_prompt_do(PROMPT_USER_CONTINUE, PSTR("Stow Probe"), PSTR("Continue"));
       #endif
       #if ENABLED(EXTENSIBLE_UI)
         ExtUI::onUserConfirmRequired_P(PSTR("Stow Probe"));
@@ -364,7 +356,7 @@ bool set_probe_deployed(const bool deploy) {
   // Make room for probe to deploy (or stow)
   // Fix-mounted probe should only raise for deploy
   // unless PAUSE_BEFORE_DEPLOY_STOW is enabled
-  #if EITHER(FIX_MOUNTED_PROBE, NOZZLE_AS_PROBE) && DISABLED(PAUSE_BEFORE_DEPLOY_STOW)
+  #if ENABLED(FIX_MOUNTED_PROBE) && DISABLED(PAUSE_BEFORE_DEPLOY_STOW)
     const bool deploy_stow_condition = deploy;
   #else
     constexpr bool deploy_stow_condition = true;
@@ -704,7 +696,7 @@ float probe_at_point(const float &rx, const float &ry, const ProbePtRaise raise_
   xyz_pos_t npos = { rx, ry };
   if (probe_relative) {
     if (!position_is_reachable_by_probe(npos)) return NAN;  // The given position is in terms of the probe
-    npos -= probe_offset_xy;                                // Get the nozzle position
+    npos -= probe_offset;                                   // Get the nozzle position
   }
   else if (!position_is_reachable(npos)) return NAN;        // The given position is in terms of the nozzle
 

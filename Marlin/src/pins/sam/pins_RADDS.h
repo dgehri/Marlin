@@ -34,9 +34,7 @@
 //
 // Servos
 //
-#if !HAS_CUTTER
-  #define SERVO0_PIN        5
-#endif
+#define SERVO0_PIN          5
 #define SERVO1_PIN          6
 #define SERVO2_PIN         39
 #define SERVO3_PIN         40
@@ -186,9 +184,7 @@
 #define HEATER_0_PIN       13
 #define HEATER_1_PIN       12
 #define HEATER_2_PIN       11
-#if !HAS_CUTTER
-  #define HEATER_BED_PIN    7   // BED
-#endif
+#define HEATER_BED_PIN      7   // BED
 
 #ifndef FAN_PIN
   #define FAN_PIN           9
@@ -207,16 +203,6 @@
 
 #define I2C_EEPROM
 #define E2END 0x1FFF // 8KB
-
-//
-// M3/M4/M5 - Spindle/Laser Control
-//
-#if HAS_CUTTER
-  #if !NUM_SERVOS
-    #define SPINDLE_LASER_PWM_PIN  5   // SERVO0_PIN
-  #endif
-  #define SPINDLE_LASER_ENA_PIN    7   // HEATER_BED_PIN - Pullup/down!
-#endif
 
 //
 // LCD / Controller

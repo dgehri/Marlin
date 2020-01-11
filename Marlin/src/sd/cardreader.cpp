@@ -26,7 +26,7 @@
 
 #include "cardreader.h"
 
-#include "../MarlinCore.h"
+#include "../Marlin.h"
 #include "../lcd/ultralcd.h"
 #include "../module/planner.h"
 #include "../module/printcounter.h"
@@ -418,7 +418,7 @@ void CardReader::stopSDPrint(
 
 void CardReader::openLogFile(char * const path) {
   flag.logging = true;
-  openFileWrite(path);
+  openFile(path, false);
 }
 
 //
@@ -444,42 +444,16 @@ void CardReader::getAbsFilename(char *dst) {
   *dst = '\0';
 }
 
-void openFailed(const char * const fname) {
-  SERIAL_ECHOLNPAIR(MSG_SD_OPEN_FILE_FAIL, fname, ".");
-}
-
-void announceOpen(const uint8_t doing, const char * const path) {
-  if (doing) {
-    SERIAL_ECHO_START();
-    SERIAL_ECHOPGM("Now ");
-    serialprintPGM(doing == 1 ? PSTR("doing") : PSTR("fresh"));
-    SERIAL_ECHOLNPAIR(" file: ", path);
-  }
-}
-
 //
-// Open a file by DOS path for read
-// The 'subcall_type' flag indicates...
-//   - 0 : Standard open from host or user interface.
-//   - 1 : (file open) Opening a new sub-procedure.
-//   - 1 : (no file open) Opening a macro (M98).
-//   - 2 : Resuming from a sub-procedure
+// Open a file by DOS path - for read or write
 //
-void CardReader::openFileRead(char * const path, const uint8_t subcall_type/*=0*/) {
+void CardReader::openFile(char * const path, const bool read, const bool subcall/*=false*/) {
+
   if (!isMounted()) return;
 
-  switch (subcall_type) {
-    case 0:      // Starting a new print. "Now fresh file: ..."
-      announceOpen(2, path);
-      file_subcall_ctr = 0;
-      break;
-
-    case 1:      // Starting a sub-procedure
-
-      // With no file is open it's a simple macro. "Now doing file: ..."
-      if (!isFileOpen()) { announceOpen(1, path); break; }
-
-      // Too deep? The firmware has to bail.
+  uint8_t doing = 0;
+  if (isFileOpen()) {                     // Replacing current file or doing a subroutine
+    if (subcall) {
       if (file_subcall_ctr > SD_PROCEDURE_DEPTH - 1) {
         SERIAL_ERROR_MSG("trying to call sub-gcode files with too many levels. MAX level is:" STRINGIFY(SD_PROCEDURE_DEPTH));
         kill();
@@ -490,15 +464,25 @@ void CardReader::openFileRead(char * const path, const uint8_t subcall_type/*=0*
       getAbsFilename(proc_filenames[file_subcall_ctr]);
       filespos[file_subcall_ctr] = sdpos;
 
-      // For sub-procedures say 'SUBROUTINE CALL target: "..." parent: "..." pos12345'
       SERIAL_ECHO_START();
       SERIAL_ECHOLNPAIR("SUBROUTINE CALL target:\"", path, "\" parent:\"", proc_filenames[file_subcall_ctr], "\" pos", sdpos);
       file_subcall_ctr++;
-      break;
+    }
+    else
+      doing = 1;
+  }
+  else if (subcall)       // Returning from a subcall?
+    SERIAL_ECHO_MSG("END SUBROUTINE");
+  else {                  // Opening fresh file
+    doing = 2;
+    file_subcall_ctr = 0; // Reset procedure depth in case user cancels print while in procedure
+  }
 
-    case 2:      // Resuming previous file after sub-procedure
-      SERIAL_ECHO_MSG("END SUBROUTINE");
-      break;
+  if (doing) {
+    SERIAL_ECHO_START();
+    SERIAL_ECHOPGM("Now ");
+    serialprintPGM(doing == 1 ? PSTR("doing") : PSTR("fresh"));
+    SERIAL_ECHOLNPAIR(" file: ", path);
   }
 
   stopSDPrint();
@@ -507,45 +491,35 @@ void CardReader::openFileRead(char * const path, const uint8_t subcall_type/*=0*
   const char * const fname = diveToFile(curDir, path);
   if (!fname) return;
 
-  if (file.open(curDir, fname, O_READ)) {
-    filesize = file.fileSize();
-    sdpos = 0;
-    SERIAL_ECHOLNPAIR(MSG_SD_FILE_OPENED, fname, MSG_SD_SIZE, filesize);
-    SERIAL_ECHOLNPGM(MSG_SD_FILE_SELECTED);
+  if (read) {
+    if (file.open(curDir, fname, O_READ)) {
+      filesize = file.fileSize();
+      sdpos = 0;
+      SERIAL_ECHOLNPAIR(MSG_SD_FILE_OPENED, fname, MSG_SD_SIZE, filesize);
+      SERIAL_ECHOLNPGM(MSG_SD_FILE_SELECTED);
 
-    selectFileByName(fname);
-    ui.set_status(longFilename[0] ? longFilename : fname);
+      selectFileByName(fname);
+      ui.set_status(longFilename[0] ? longFilename : fname);
+      //if (longFilename[0]) {
+      //  SERIAL_ECHOPAIR(MSG_SD_FILE_LONG_NAME, longFilename);
+      //}
+    }
+    else
+      SERIAL_ECHOLNPAIR(MSG_SD_OPEN_FILE_FAIL, fname, ".");
   }
-  else
-    openFailed(fname);
-}
-
-//
-// Open a file by DOS path for write
-//
-void CardReader::openFileWrite(char * const path) {
-  if (!isMounted()) return;
-
-  announceOpen(2, path);
-  file_subcall_ctr = 0;
-
-  stopSDPrint();
-
-  SdFile *curDir;
-  const char * const fname = diveToFile(curDir, path);
-  if (!fname) return;
-
-  if (file.open(curDir, fname, O_CREAT | O_APPEND | O_WRITE | O_TRUNC)) {
-    flag.saving = true;
-    selectFileByName(fname);
-    #if ENABLED(EMERGENCY_PARSER)
-      emergency_parser.disable();
-    #endif
-    SERIAL_ECHOLNPAIR(MSG_SD_WRITE_TO_FILE, fname);
-    ui.set_status(fname);
+  else { //write
+    if (!file.open(curDir, fname, O_CREAT | O_APPEND | O_WRITE | O_TRUNC))
+      SERIAL_ECHOLNPAIR(MSG_SD_OPEN_FILE_FAIL, fname, ".");
+    else {
+      flag.saving = true;
+      selectFileByName(fname);
+      #if ENABLED(EMERGENCY_PARSER)
+        emergency_parser.disable();
+      #endif
+      SERIAL_ECHOLNPAIR(MSG_SD_WRITE_TO_FILE, fname);
+      ui.set_status(fname);
+    }
   }
-  else
-    openFailed(fname);
 }
 
 //
@@ -1061,9 +1035,9 @@ uint16_t CardReader::get_num_Files() {
 void CardReader::printingHasFinished() {
   planner.synchronize();
   file.close();
-  if (file_subcall_ctr > 0) { // Resume calling file after closing procedure
+  if (file_subcall_ctr > 0) { // Heading up to a parent file that called current as a procedure.
     file_subcall_ctr--;
-    openFileRead(proc_filenames[file_subcall_ctr], 2); // 2 = Returning from sub-procedure
+    openFile(proc_filenames[file_subcall_ctr], true, true);
     setIndex(filespos[file_subcall_ctr]);
     startFileprint();
   }

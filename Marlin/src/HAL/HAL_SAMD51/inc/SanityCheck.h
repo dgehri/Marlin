@@ -36,7 +36,7 @@
 #endif
 
 #if ENABLED(SDIO_SUPPORT)
-  #error "SDIO_SUPPORT is not supported on SAMD51."
+  #error "SDIO_SUPPORT is not supported."
 #endif
 
 #if ENABLED(FAST_PWM_FAN)
@@ -45,8 +45,4 @@
 
 #if ENABLED(EEPROM_SETTINGS) && NONE(SPI_EEPROM, I2C_EEPROM)
   #warning "Did you activate the SmartEEPROM? See https://github.com/GMagician/SAMD51-SmartEEprom-Activator"
-#endif
-
-#if TMC_HAS_SW_SERIAL
-  #error "TMC220x Software Serial is not supported on this platform."
 #endif
